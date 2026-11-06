@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Materials · Creator 5 Pro</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel-2:#1c232c; --line:#252d38;
+    --text:#e6edf3; --muted:#8b96a5; --accent:#4c9aff; --ok:#3fb950;
+    --warn:#d29922; --err:#f85149; --hot:#ff7b52;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1200px;margin:0 auto;padding:24px 20px 60px}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
+  h1{font-size:20px;margin:0;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  a.btn,button{font:inherit;color:var(--text);background:var(--panel-2);border:1px solid var(--line);
+         border-radius:8px;padding:8px 14px;cursor:pointer;transition:.15s;text-decoration:none;
+         display:inline-block}
+  a.btn:hover,button:hover{border-color:#3a4756;background:#222a34}
+  button.sm{padding:5px 9px;font-size:12px;border-radius:6px}
+  button.danger:hover{border-color:var(--err);color:#ffb4ae}
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+           margin:0 0 12px;font-weight:600}
+  .big{font-size:26px;font-weight:600;letter-spacing:-.02em}
+  .unit{font-size:13px;color:var(--muted);font-weight:400}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13px}
+  .row + .row{border-top:1px solid rgba(255,255,255,.04)}
+  .row span:first-child{color:var(--muted)}
+  .row span:last-child{font-variant-numeric:tabular-nums;text-align:right}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;
+     letter-spacing:.06em;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.04);
+     font-variant-numeric:tabular-nums;white-space:nowrap;vertical-align:middle}
+  .mats{min-width:980px}
+  .evt{min-width:720px}
+  .scroll{overflow-x:auto}
+  /* A filament reads first as its colour — the swatch is the identifier, the
+     name is the caption. */
+  .fil{display:flex;align-items:center;gap:10px;white-space:nowrap}
+  .chip{width:26px;height:26px;border-radius:7px;flex:none;
+        border:1px solid rgba(255,255,255,.25)}
+  .chip.none{background:repeating-linear-gradient(45deg,#333 0 5px,#222 5px 10px)}
+  .fil b{display:block;font-size:13px;font-weight:600}
+  .fil span{color:var(--muted);font-size:11px}
+  .tag{display:inline-block;padding:1px 7px;border-radius:999px;background:var(--panel-2);
+       border:1px solid var(--line);font-size:11px;color:var(--muted)}
+  .tag.live{border-color:var(--ok);color:#8ee79b;background:rgba(63,185,80,.12)}
+  .tag.slot{border-color:var(--accent);color:#9dc4ff;background:rgba(76,154,255,.1)}
+  .bar{height:6px;background:var(--panel-2);border-radius:99px;overflow:hidden;
+       margin:5px 0 3px;min-width:110px}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#7ab8ff);
+           border-radius:99px;transition:width .6s ease}
+  .bar > i.low{background:linear-gradient(90deg,var(--warn),#f0cd7a)}
+  .bar > i.out{background:linear-gradient(90deg,var(--err),#ff9d96)}
+  .muted{color:var(--muted)}
+  .acts{display:flex;gap:6px;justify-content:flex-end}
+  .note{color:var(--muted);font-size:12px;margin:10px 2px 0}
+  .empty{color:var(--muted);padding:14px 8px}
+  @media (max-width:640px){ .wrap{padding:16px 12px 40px} h1{font-size:17px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Materials</h1>
+      <div class="sub">{{ printer_host }} · filament usage by type and colour</div>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn" href="/">← Dashboard</a>
+    <a class="btn" href="/automation">Таймлапсы</a>
+    <a class="btn" href="/bot">Бот</a>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Lifetime filament</h2>
+      <div class="big"><span id="sumG">—</span><span class="unit"> g</span></div>
+      <div class="row"><span>Length</span><span id="sumM">—</span></div>
+      <div class="row"><span>Filaments tracked</span><span id="sumN">—</span></div>
+      <div class="row"><span>On current spools</span><span id="sumSpool">—</span></div>
+    </div>
+    <div class="card">
+      <h2>By material</h2>
+      <div id="byMat"><span class="muted">Nothing tracked yet.</span></div>
+    </div>
+    <div class="card">
+      <h2>Printing now</h2>
+      <div class="sub" id="liveFile">No active job</div>
+      <div id="liveList" style="margin-top:8px"><span class="muted">—</span></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h2>Filaments</h2>
+    <div class="scroll">
+    <table class="mats">
+      <thead><tr>
+        <th>Filament</th><th>Loaded</th><th>This spool</th><th>Remaining</th>
+        <th>Jobs</th><th>Since</th><th>Lifetime</th><th>Spools</th><th></th>
+      </tr></thead>
+      <tbody id="matBody"><tr><td colspan="9" class="empty">
+        Nothing yet — filaments appear as soon as they are loaded in the material station.
+      </td></tr></tbody>
+    </table>
+    </div>
+    <p class="note">
+      Usage is metered live from the machine's own filament counter and charged to whichever
+      material-station slot is feeding, so a multi-colour job splits across rows.
+      <b>New spool</b> zeroes the spool column and files the old spool's total below;
+      the lifetime column keeps counting regardless. Grams are derived from length using the
+      material's density (2.98 g/m for PLA, 3.05 g/m for PETG); unrecognised materials use the
+      0.33 m/g PLA/PETG average.
+    </p>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h2>Recent usage by job</h2>
+    <div class="scroll">
+    <table class="evt">
+      <thead><tr><th>Finished</th><th>File</th><th>Filament</th><th>Slot</th>
+        <th>Length</th><th>Weight</th></tr></thead>
+      <tbody id="evtBody"><tr><td colspan="6" class="empty">No completed jobs tracked yet.</td></tr></tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h2>Finished spools</h2>
+    <div class="scroll">
+    <table class="evt">
+      <thead><tr><th>Replaced</th><th>Filament</th><th>Ran</th><th>Length</th>
+        <th>Weight</th><th>Jobs</th><th>Note</th></tr></thead>
+      <tbody id="spoolBody"><tr><td colspan="7" class="empty">No spools retired yet.</td></tr></tbody>
+    </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const t1 = v => (v==null ? "—" : (Math.round(v*10)/10).toFixed(1));
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function when(ts){ return ts ? new Date(ts*1000).toLocaleString() : "—"; }
+function ago(ts){
+  if (!ts) return "—";
+  const d = Math.max(0, Date.now()/1000 - ts);
+  if (d < 3600) return Math.round(d/60)+"m ago";
+  if (d < 86400) return Math.round(d/3600)+"h ago";
+  return Math.round(d/86400)+"d ago";
+}
+function swatch(color){
+  return color ? `<div class="chip" style="background:${esc(color)}"></div>`
+               : `<div class="chip none" title="colour not reported"></div>`;
+}
+function name(f){ return f.label || `${f.material||"?"} ${f.color||""}`.trim(); }
+
+let live = {};
+
+function paint(d){
+  const s = d.summary || {};
+  $("sumG").textContent = t1(s.lifetime_g);
+  $("sumM").textContent = s.lifetime_m ? t1(s.lifetime_m)+" m" : "—";
+  $("sumN").textContent = s.filaments || 0;
+  $("sumSpool").textContent = s.spool_g ? t1(s.spool_g)+" g" : "—";
+
+  $("byMat").innerHTML = (s.by_material||[]).length
+    ? s.by_material.map(m => `<div class="row"><span>${esc(m.material)}</span>
+        <span>${t1(m.g)} g · ${t1(m.m)} m</span></div>`).join("")
+    : '<span class="muted">Nothing tracked yet.</span>';
+
+  // Live job attribution. Already folded into the spool totals — shown on its
+  // own so it is obvious which spool is ticking up right now.
+  const lv = d.live || {};
+  live = {};
+  (lv.by_filament||[]).forEach(b => { live[b.material+"|"+b.color] = b; });
+  $("liveFile").textContent = lv.file || "No active job";
+  $("liveList").innerHTML = (lv.by_filament||[]).length
+    ? lv.by_filament.map(b => `<div class="row"><span class="fil">${swatch(b.color)}
+        ${esc(b.material)}</span><span>${t1(b.m)} m · ${t1(b.g)} g</span></div>`).join("")
+    : '<span class="muted">—</span>';
+
+  const fils = d.filaments || [];
+  $("matBody").innerHTML = !fils.length
+    ? `<tr><td colspan="9" class="empty">Nothing yet — filaments appear as soon as they are
+       loaded in the material station.</td></tr>`
+    : fils.map(f => {
+        const sp = f.spool, lt = f.lifetime;
+        const isLive = !!live[f.material+"|"+f.color];
+        const pct = sp.used_pct;
+        const cls = pct==null ? "" : pct >= 100 ? "out" : pct >= 80 ? "low" : "";
+        const remain = sp.remaining_g==null
+          ? '<span class="muted">no spool size</span>'
+          : `<div class="bar"><i class="${cls}" style="width:${Math.min(100,pct)}%"></i></div>
+             <span class="muted">${t1(sp.remaining_g)} g of ${t1(f.capacity_g)} g left</span>`;
+        return `<tr>
+          <td><div class="fil">${swatch(f.color)}<div>
+              <b>${esc(f.label || f.material || "?")}</b>
+              <span>${esc(f.label ? (f.material||"?")+" · " : "")}${
+                f.color ? esc(f.color) : "colour not reported"}</span>
+            </div>${isLive?'<span class="tag live">printing</span>':""}</div></td>
+          <td>${(f.loaded_slots||[]).length
+              ? f.loaded_slots.map(i=>`<span class="tag slot">Slot ${i}</span>`).join(" ")
+              : '<span class="muted">—</span>'}</td>
+          <td><b>${t1(sp.g)} g</b> <span class="muted">· ${t1(sp.m)} m</span></td>
+          <td>${remain}</td>
+          <td>${sp.jobs}</td>
+          <td class="muted">${ago(sp.started_at)}</td>
+          <td>${t1(lt.g)} g <span class="muted">· ${t1(lt.m)} m · ${lt.jobs} jobs</span></td>
+          <td class="muted">${f.spool_count}</td>
+          <td><div class="acts">
+            <button class="sm" onclick="newSpool(${f.id},this)">New spool</button>
+            <button class="sm" onclick="editFil(${f.id})">Edit</button>
+            <button class="sm danger" onclick="delFil(${f.id})">✕</button>
+          </div></td></tr>`;
+      }).join("");
+
+  const ev = d.events || [];
+  $("evtBody").innerHTML = !ev.length
+    ? '<tr><td colspan="6" class="empty">No completed jobs tracked yet.</td></tr>'
+    : ev.map(e => `<tr>
+        <td>${when(e.finished_at)}</td>
+        <td style="white-space:normal;overflow-wrap:anywhere;min-width:220px">${esc(e.job_file)||"—"}</td>
+        <td><div class="fil">${swatch(e.color)}${esc(e.label || e.material)}</div></td>
+        <td>${e.slot_id ? "Slot "+e.slot_id : "—"}</td>
+        <td>${t1(e.meters)} m</td><td>${t1(e.grams)} g</td></tr>`).join("");
+
+  const sh = d.spools || [];
+  $("spoolBody").innerHTML = !sh.length
+    ? '<tr><td colspan="7" class="empty">No spools retired yet.</td></tr>'
+    : sh.map(h => `<tr>
+        <td>${when(h.ended_at)}</td>
+        <td><div class="fil">${swatch(h.color)}${esc(h.label || h.material)}</div></td>
+        <td class="muted">${h.started_at ? when(h.started_at) : "—"}</td>
+        <td>${t1(h.meters)} m</td><td>${t1(h.grams)} g</td><td>${h.jobs}</td>
+        <td style="white-space:normal">${esc(h.note)||"—"}</td></tr>`).join("");
+}
+
+let current = [];
+async function load(){
+  try{
+    const r = await fetch("/api/materials", {cache:"no-store"});
+    const d = await r.json();
+    current = d.filaments || [];
+    paint(d);
+  }catch(e){ /* transient; next refresh retries */ }
+}
+
+async function post(url, body, method){
+  const r = await fetch(url, {method: method || "POST",
+    headers:{"Content-Type":"application/json"},
+    body: body ? JSON.stringify(body) : undefined});
+  return r.json();
+}
+
+async function newSpool(id, btn){
+  const f = current.find(x => x.id === id);
+  const label = f ? name(f) : "this filament";
+  const used = f ? t1(f.spool.g)+" g" : "";
+  if (!confirm(`Start a new spool of ${label}?\n\nThe current spool (${used} used) is filed `
+      + `under "Finished spools" and its counter goes back to zero. The lifetime total is kept.`))
+    return;
+  const note = prompt("Note for the spool you're retiring (optional):", "") ?? "";
+  btn.disabled = true;
+  try { await post(`/api/materials/${id}/new_spool`, {note}); await load(); }
+  finally { btn.disabled = false; }
+}
+
+async function editFil(id){
+  const f = current.find(x => x.id === id);
+  if (!f) return;
+  const label = prompt("Name for this filament (blank to use material + colour):", f.label);
+  if (label === null) return;
+  const cap = prompt("Spool size in grams, for the remaining estimate (0 to hide it):",
+                     f.capacity_g);
+  if (cap === null) return;
+  await post(`/api/materials/${id}`, {label, capacity_g: Number(cap) || 0});
+  load();
+}
+
+async function delFil(id){
+  const f = current.find(x => x.id === id);
+  if (!confirm(`Delete ${f ? name(f) : "this filament"} from the table?\n\n`
+      + `Its lifetime total and job history go with it. If the filament is still loaded it `
+      + `will reappear on the next poll with its counters at zero.`)) return;
+  await post(`/api/materials/${id}`, null, "DELETE");
+  load();
+}
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

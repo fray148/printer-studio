@@ -1,0 +1,16 @@
+/* Same tokens, surfaces and controls as the existing printer dashboard. */
+.automation-grid,.settings-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.home-automation{margin-top:16px}.card-top,.archive-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.card-top{margin-bottom:14px}.card-top h2{margin:0}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}
+button.primary{background:rgba(76,154,255,.15);border-color:var(--accent);color:#9dc4ff}button.primary:hover{background:rgba(76,154,255,.24)}
+button:disabled{opacity:.4;cursor:default}button.danger{margin-left:auto;color:var(--muted)}button.danger:hover{border-color:var(--err);color:#ffb4ae}
+a.selected{border-color:var(--accent);color:#9dc4ff}.field{display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--muted);margin:16px 0 0}.fields{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+input:not([type=checkbox]){width:100%;min-width:0;padding:10px 12px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit;font-size:14px;outline:none}input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(76,154,255,.12)}
+.toggle{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:16px}.toggle input{accent-color:var(--accent);width:16px;height:16px}
+.hint{font-size:12px;color:var(--muted);line-height:1.6}.commands{display:flex;gap:8px;margin:18px 0}.commands code{padding:5px 9px;border:1px solid var(--line);background:var(--panel-2);border-radius:6px;color:#9dc4ff}
+.settings-layout{margin-top:16px}.save-row{grid-column:1/-1;display:flex;justify-content:space-between;gap:14px;align-items:center}.archive-section{margin-top:36px;scroll-margin-top:20px}.archive-heading{margin-bottom:16px}.archive-heading p{margin:5px 0 0}.archive-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.single-settings{grid-template-columns:1fr}.bot-page .automation-grid{grid-template-columns:1fr}
+.recording{min-width:0}.recording h3{font-size:15px;font-weight:500;overflow-wrap:anywhere;margin:12px 0 6px}.rec-date{font-size:11px}.rec-video{width:100%;max-height:300px;background:#000;border-radius:8px;margin-top:12px}.rec-status.recording{border-color:var(--err);color:#ffb4ae}.rec-status.ready{color:var(--ok)}.rec-status.encoding,.rec-status.queued{color:var(--warn)}
+.empty-state{text-align:center;padding:38px 20px}.empty-icon{color:var(--muted);font-size:35px}.empty-state h3{font-weight:500;font-size:16px}.notice{background:var(--panel-2);border:1px solid var(--accent);border-radius:8px;padding:12px 16px;margin-bottom:16px;overflow-wrap:anywhere}.notice.error{border-color:var(--err);color:#ffb4ae}details.files{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}details.files summary{cursor:pointer;color:#9dc4ff}details.files .actions{margin-top:10px}.recording .rec-error:empty{display:none}
+[hidden]{display:none!important}
+@media(max-width:720px){.automation-grid,.settings-layout{grid-template-columns:1fr}.save-row{align-items:stretch;flex-direction:column}.archive-grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr 1fr}.rec-date{font-size:10px}}

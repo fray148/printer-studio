@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf }}">
+<title>{{ 'Бот' if tab == 'bot' else 'Таймлапсы' }} · Printer Studio</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='automation.css') }}">
+</head>
+<body class="automation-page {{ 'bot-page' if tab == 'bot' else '' }}" data-tab="{{ tab }}"><main class="wrap">
+<header><div><h1>Creator 5 Pro</h1><div class="sub">Printer Studio · {{ 'Telegram-бот' if tab == 'bot' else 'Таймлапсы' }}</div></div><div class="spacer"></div>
+<a class="btn" href="/">Панель</a><a class="btn" href="/materials">Материалы</a><a class="btn {{ 'selected' if tab != 'bot' else '' }}" href="/automation">Таймлапсы</a><a class="btn" href="/automation#files">Файлы</a><a class="btn {{ 'selected' if tab == 'bot' else '' }}" href="/bot">Бот</a></header>
+<div id="notice" class="notice" role="status" hidden></div>
+<section class="automation-grid">
+<article class="card" {{ 'hidden' if tab == 'bot' else '' }}><div class="card-top"><h2>Таймлапс</h2><span class="pill" id="capture-state">Загрузка…</span></div>
+<div class="big" id="capture-count">— <span class="unit">кадров</span></div><p class="sub" id="capture-label">Запись не запущена</p>
+<label class="field">Название ручной записи<input id="record-label" maxlength="200" placeholder="Например, печать корпуса"></label>
+<div class="actions"><button class="primary" id="record-start">Начать запись</button><button id="record-stop" disabled>Остановить и собрать</button></div>
+<p class="hint">Остановка завершает только запись видео. Печать продолжается.</p>
+</article>
+<article class="card"><div class="card-top"><h2>Telegram</h2><span class="pill" id="bot-state">Выключен</span></div>
+<div class="big" id="bot-name">Не настроен</div><p class="sub">Статус печати, снимки и готовые таймлапсы в одном чате.</p>
+<div class="commands"><code>/status</code><code>/photo</code><code>/timelapse</code></div>
+<div class="actions"><a class="btn" href="/bot#telegram-settings">Настроить бота</a><button id="telegram-test" disabled>Тестовое сообщение</button></div>
+<p class="hint" id="bot-error">Бот отвечает только разрешённому chat_id.</p>
+</article>
+</section>
+<form id="settings-form" class="settings-layout single-settings">
+<article class="card" {{ 'hidden' if tab == 'bot' else '' }}><h2>Настройки записи</h2>
+<label class="toggle"><input type="checkbox" id="auto_record"> Автоматически записывать во время печати</label>
+<div class="fields"><label class="field">Интервал между кадрами, сек<input type="number" id="interval" min="5" max="3600" required></label>
+<label class="field">Частота готового видео, FPS<input type="number" id="fps" min="10" max="60" required></label>
+<label class="field">Хранить записи, дней<input type="number" id="retention_days" min="1" max="365" required></label>
+<label class="field">Лимит архива, ГБ<input type="number" id="storage_gb" min="1" max="500" required></label>
+<label class="field">Оставлять на диске, ГБ<input type="number" id="min_free_gb" min="1" max="100" required></label></div>
+<p class="hint">Старые завершённые записи удаляются по сроку хранения. При нехватке места запись останавливается; активные записи не удаляются. Исходные кадры остаются до удаления записи.</p>
+</article>
+<article class="card" id="telegram-settings" {{ 'hidden' if tab != 'bot' else '' }}><h2>Подключение Telegram</h2>
+<p class="sub">Вставь параметры бота здесь. После сохранения его можно проверить кнопкой «Тестовое сообщение».</p>
+<label class="toggle"><input type="checkbox" id="telegram_enabled"> Включить бота</label>
+<div class="fields">
+<label class="field">Токен от BotFather<input type="password" id="bot_token" autocomplete="new-password" placeholder="Не настроен" spellcheck="false"></label>
+<label class="field">Разрешённый chat_id<input id="chat_id" inputmode="numeric" placeholder="Число, например 123456789" autocomplete="off"></label>
+</div>
+<label class="toggle"><input type="checkbox" id="send_video"> Отправлять готовое видео в Telegram</label>
+<label class="field">Уведомлять каждые N% печати<input type="number" id="notify_progress" min="0" max="100"><span class="hint">0 — только начало, пауза, окончание и ошибки.</span></label>
+<label class="toggle"><input type="checkbox" id="clear_token"> Удалить сохранённый токен</label>
+<p class="hint">Создай бота в @BotFather командой /newbot и скопируй выданный токен. Затем нажми «Старт» в чате своего бота. В chat_id укажи числовой ID чата, которому разрешён доступ. Пустое поле токена сохраняет прежний токен.</p>
+</article>
+<div class="save-row"><span class="sub">Настройки сохраняются при пересоздании контейнера.</span><button class="primary" type="submit" id="save-settings" disabled>{{ 'Сохранить настройки бота' if tab == 'bot' else 'Сохранить настройки' }}</button></div>
+</form>
+<section class="archive-section" id="files" {{ 'hidden' if tab == 'bot' else '' }}><div class="archive-heading"><div><h1>Архив таймлапсов</h1><p class="sub">Записи, исходные кадры и собранные видео</p></div><span class="pill" id="archive-count">0 записей</span></div>
+<div id="archive" class="archive-grid"></div><div class="empty-state card" id="archive-empty"><div class="empty-icon">◷</div><h3>Здесь появится первая запись</h3><p class="sub">Начни запись вручную или включи автоматическую запись во время печати.</p></div>
+</section>
+<template id="recording-template"><article class="card recording"><div class="card-top"><span class="pill rec-status"></span><span class="sub rec-date"></span></div><h3 class="rec-label"></h3><p class="sub rec-details"></p><p class="hint rec-error"></p><video class="rec-video" controls playsinline preload="none" hidden></video><details class="files"><summary>Файлы записи</summary><div class="actions"><a class="btn rec-frames">Скачать кадры ZIP</a><a class="btn rec-info">Скачать описание</a><button class="rec-rename">Переименовать</button></div></details><div class="actions"><a class="btn rec-download" hidden>Скачать MP4</a><button class="rec-retry" hidden>Повторить сборку</button><button class="danger rec-delete">Удалить</button></div></article></template>
+</main><script src="{{ url_for('static', filename='automation.js') }}" defer></script></body></html>

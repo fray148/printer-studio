@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Printer Studio · Creator 5 Pro</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='automation.css') }}">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Creator 5 Pro</h1>
+      <div class="sub">Printer Studio · {{ printer_host }}</div>
+    </div>
+    <span class="pill"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
+    <div class="spacer"></div>
+    <a class="btn" href="/materials">Materials</a>
+    <a class="btn" href="/automation">Таймлапсы</a>
+    <a class="btn" href="/bot">Бот</a>
+    <button id="unitBtn">°F</button>
+    <button id="lightBtn">Light</button>
+    <button id="camBtn">Camera</button>
+    <button id="clearBtn" style="display:none">Clear finish dialog</button>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="grid">
+
+    <div class="card" style="grid-column:span 2;min-width:0">
+      <h2>Current job</h2>
+      <img class="thumb" id="jobThumb" alt="">
+      <div class="file" id="jobFile">—</div>
+      <div class="big"><span id="jobPct">0</span><span class="unit">%</span></div>
+      <div class="bar"><i id="jobBar" style="width:0%"></i></div>
+      <div class="row"><span>Layer</span><span id="jobLayer">—</span></div>
+      <div class="row"><span>Elapsed</span><span id="jobElapsed">—</span></div>
+      <div class="row"><span>Remaining</span><span id="jobLeft">—</span></div>
+      <div class="row"><span>Speed</span><span id="jobSpeed">—</span></div>
+      <div class="row"><span>Filament used</span><span id="jobFil">—</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Temperatures</h2>
+      <div class="row"><span id="tNozLabel">Nozzle</span><span id="tNoz">—</span></div>
+      <div class="therm"><i id="tNozBar" style="width:0%"></i></div>
+      <div class="row"><span>Bed</span><span id="tBed">—</span></div>
+      <div class="therm"><i id="tBedBar" style="width:0%"></i></div>
+      <div class="row"><span>Chamber</span><span id="tCham">—</span></div>
+      <div class="therm"><i id="tChamBar" style="width:0%"></i></div>
+      <div id="nozList" class="nozzles"></div>
+    </div>
+
+    <div class="card">
+      <h2>Material station</h2>
+      <div id="slots" class="slots"><span style="color:var(--muted);font-size:13px">—</span></div>
+      <div class="row"><span>Loaded type</span><span id="fType">—</span></div>
+      <div class="row"><span>Slicer estimate</span><span id="fLen">—</span></div>
+      <div class="row"><span>Lifetime used</span><span id="fCum">—</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Lifetime totals</h2>
+      <div class="big"><span id="ltHours">—</span><span class="unit"> h printed</span></div>
+      <div class="row"><span>Jobs logged</span><span id="ltJobs">—</span></div>
+      <div class="row"><span>Logged runtime</span><span id="ltLogged">—</span></div>
+      <div class="row"><span>Filament (machine)</span><span id="ltFil">—</span></div>
+      <div class="row"><span>Filament (tracked jobs)</span><span id="ltTracked">—</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Machine</h2>
+      <div class="row"><span>Nozzle</span><span id="mNoz">—</span></div>
+      <div class="row"><span>Door</span><span id="mDoor">—</span></div>
+      <div class="row"><span>Cooling fan</span><span id="mFan">—</span></div>
+      <div class="row"><span>Chamber fan</span><span id="mCFan">—</span></div>
+      <div class="row"><span>TVOC</span><span id="mTvoc">—</span></div>
+      <div class="row"><span>Free storage</span><span id="mDisk">—</span></div>
+      <div class="row"><span>Firmware</span><span id="mFw">—</span></div>
+    </div>
+
+  </div>
+
+
+  <section class="automation-grid home-automation" aria-label="Таймлапс и Telegram">
+    <article class="card"><div class="card-top"><h2>Таймлапс</h2><span class="pill" id="home-capture-state">Загрузка…</span></div>
+      <div class="big"><span id="home-frame-count">0</span> <span class="unit">кадров</span></div>
+      <p class="sub" id="home-capture-label">Ручная и автоматическая запись</p>
+      <a class="btn" href="/automation">Управление записью</a> <a class="btn" href="/automation#files">Файлы таймлапсов →</a>
+    </article>
+    <article class="card"><div class="card-top"><h2>Telegram</h2><span class="pill" id="home-bot-state">Выключен</span></div>
+      <div class="big" id="home-bot-name">Не настроен</div><p class="sub">Статус печати, снимки и готовые видео.</p>
+      <a class="btn" href="/bot">Настроить бота →</a>
+    </article>
+  </section>
+  <div class="cam">
+    <div class="cam-box" id="camBox"><div class="cam-off">Camera off</div></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h2>Recent jobs</h2>
+    <div style="overflow-x:auto">
+    <table class="hist">
+      <thead><tr><th>File</th><th>Material</th><th>Finished</th><th>Duration</th>
+        <th>Filament Used</th><th>Approximate Filament Grams</th><th>Result</th></tr></thead>
+      <tbody id="histBody"><tr><td colspan="7" style="color:var(--muted)">No jobs logged yet.</td></tr></tbody>
+    </table>
+    </div>
+    <p style="color:var(--muted);font-size:12px;margin:10px 2px 0">
+      Length is measured from the machine's own filament counter. Grams are derived from it
+      using the material's density — 2.98 g/m for PLA, 3.05 g/m for PETG. Rows marked
+      <b>*</b> had no identifiable material and use the 0.33 m/g PLA/PETG average.
+    </p>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function dur(s){
+  s = Math.max(0, Math.round(s||0));
+  const h = Math.floor(s/3600), m = Math.floor(s%3600/60);
+  if (h) return h+"h "+String(m).padStart(2,"0")+"m";
+  if (m) return m+"m "+String(s%60).padStart(2,"0")+"s";
+  return s+"s";
+}
+const t1 = v => (v==null? "—" : (Math.round(v*10)/10).toFixed(1));
+
+let lightOn = false, camOn = false;
+let useF = localStorage.getItem("tempUnit") === "F";
+let lastData = null;
+
+const c2f = c => c==null ? null : c*9/5+32;
+const tconv = v => useF ? c2f(v) : v;
+
+$("unitBtn").textContent = useF ? "°C" : "°F";
+$("unitBtn").onclick = () => {
+  useF = !useF;
+  localStorage.setItem("tempUnit", useF ? "F" : "C");
+  $("unitBtn").textContent = useF ? "°C" : "°F";
+  if (lastData) paint(lastData);
+};
+
+function paint(d){
+  lastData = d;
+  const bad = !!d._error && d._stale;
+  $("banner").style.display = d._error ? "block" : "none";
+  $("banner").className = "banner" + (d._stale ? " stale" : "");
+  if (d._error) {
+    $("banner").textContent = d._stale
+      ? `Showing cached data from ${d._age_s}s ago — printer not responding (${d._error})`
+      : `Printer error: ${d._error}`;
+  }
+
+  const st = d.status || "unknown";
+  $("statusText").textContent = st.charAt(0).toUpperCase()+st.slice(1);
+  const dot = $("dot");
+  dot.className = "dot " + (d.error_code ? "err" : d.printing ? "ok" : bad ? "warn" : "");
+
+  const j = d.job||{}, t = d.temps||{}, f = d.filament||{}, m = d.machine||{}, fan = d.fans||{};
+
+  $("jobFile").textContent = j.file || "No active job";
+  $("jobPct").textContent = t1(j.progress);
+  $("jobBar").style.width = (j.progress||0)+"%";
+  $("jobLayer").textContent = j.layer_total ? `${j.layer||0} / ${j.layer_total}` : (j.layer||"—");
+  $("jobElapsed").textContent = j.elapsed_s ? dur(j.elapsed_s) : "—";
+  $("jobLeft").textContent = j.remaining_s ? dur(j.remaining_s) : "—";
+  $("jobSpeed").textContent = j.speed_mm_s ? `${t1(j.speed_mm_s)} mm/s` + (j.speed_pct? ` (${j.speed_pct}%)`:"") : "—";
+  $("jobFil").textContent = j.filament_m
+    ? `${t1(j.filament_m)} m  ·  ~${t1(j.filament_g)} g${j.grams_estimated?" *":""}`
+    : !d.printing ? "—"
+    : j.filament_tracked ? "measuring…"
+    : "not tracked (job predates dashboard)";
+
+  const thumb = $("jobThumb");
+  if (j.has_thumb) { thumb.style.display="block"; if(!thumb.dataset.f || thumb.dataset.f!==j.file){
+      thumb.dataset.f=j.file; thumb.src="/camera/thumb?t="+Date.now(); } }
+  else { thumb.style.display="none"; thumb.dataset.f=""; }
+
+  const unit = useF ? "°F" : "°C";
+  const temp = (cur,tgt,el,bar,max) => {
+    $(el).textContent = tgt ? `${t1(tconv(cur))} / ${t1(tconv(tgt))} ${unit}` : `${t1(tconv(cur))} ${unit}`;
+    $(bar).style.width = Math.min(100, (cur||0)/max*100)+"%";
+  };
+  $("tNozLabel").textContent = t.nozzle_id ? `Nozzle ${t.nozzle_id} (active)` : "Nozzle";
+  temp(t.nozzle, t.nozzle_target, "tNoz","tNozBar",300);
+  temp(t.bed, t.bed_target, "tBed","tBedBar",120);
+  temp(t.chamber, t.chamber_target, "tCham","tChamBar",70);
+
+  const nz = d.nozzles||[];
+  $("nozList").innerHTML = nz.length<2 ? "" : nz.map(n =>
+    `<div class="nz${n.id===t.nozzle_id?" act":""}"><b>${Math.round(tconv(n.temp))}°</b>
+     <span>T${n.id}${n.target?" → "+Math.round(tconv(n.target))+"°":""}</span></div>`).join("");
+
+  const ms = d.material_station||{}, sl = ms.slots||[];
+  $("slots").innerHTML = !sl.length ? '<span style="color:var(--muted);font-size:13px">—</span>'
+    : sl.map(s => `<div class="slot${s.active?" act":""}${s.loaded?"":" empty"}">
+        <div class="chip" style="background:${s.color||"#444"}"></div>
+        <b>${s.material||"—"}</b><span>Slot ${s.id}</span></div>`).join("");
+
+  const activeSlot = sl.find(s=>s.active);
+  $("fType").textContent = activeSlot ? `${activeSlot.material} (slot ${activeSlot.id})`
+    : ([f.left_type,f.right_type].filter(Boolean).join(" / ") || "—");
+  // The firmware's own per-job estimate; blank on Creator 5 Pro 1.9.x.
+  $("fLen").textContent = f.est_len_m
+    ? `${t1(f.est_len_m)} m` + (f.est_weight_g ? ` · ${t1(f.est_weight_g)} g` : "") : "—";
+  $("fCum").textContent = f.cumulative_m ? `${t1(f.cumulative_m)} m` : "—";
+  $("ltFil").textContent = f.cumulative_m ? `${t1(f.cumulative_m)} m` : "—";
+
+  $("ltHours").textContent = m.cumulative_print_s ? Math.round(m.cumulative_print_s/3600) : "—";
+  $("mNoz").textContent = [m.nozzle_model, m.nozzle_count && `x${m.nozzle_count}`].filter(Boolean).join(" ") || "—";
+  $("mDoor").textContent = m.door || "—";
+  $("mFan").textContent = fan.cooling ? `${t1(fan.cooling)}%` : "—";
+  $("mCFan").textContent = fan.chamber ? `${t1(fan.chamber)}%` : "—";
+  $("mTvoc").textContent = m.tvoc || "—";
+  $("mDisk").textContent = m.disk_free_gb ? `${t1(m.disk_free_gb)} GB` : "—";
+  $("mFw").textContent = d.firmware || "—";
+
+  lightOn = !!d.light_on;
+  $("lightBtn").classList.toggle("on", lightOn);
+  $("lightBtn").textContent = "Light " + (lightOn ? "on" : "off");
+
+  $("clearBtn").style.display = (st === "completed") ? "" : "none";
+}
+
+async function tick(){
+  try{
+    const r = await fetch("/api/status", {cache:"no-store"});
+    const d = await r.json();
+    if (!r.ok) {
+      $("banner").style.display="block";
+      $("banner").className="banner";
+      $("banner").textContent = "Printer unreachable: " + (d._error||r.status);
+      $("statusText").textContent = "offline";
+      $("dot").className = "dot err";
+      return;
+    }
+    paint(d);
+  }catch(e){ /* transient; next tick retries */ }
+}
+
+async function loadHistory(){
+  try{
+    const r = await fetch("/api/history");
+    const h = await r.json();
+    $("ltJobs").textContent = h.count || 0;
+    $("ltLogged").textContent = h.total_duration_s ? dur(h.total_duration_s) : "—";
+    $("ltTracked").textContent = h.total_filament_m
+      ? `${t1(h.total_filament_m)} m · ~${t1(h.total_filament_g)} g (${h.tracked_count} jobs)` : "—";
+    const tb = $("histBody");
+    if (!h.jobs || !h.jobs.length) return;
+    tb.innerHTML = h.jobs.map(j => `<tr>
+        <td class="fn">${j.file||"—"}</td>
+        <td>${j.material||"—"}</td>
+        <td>${new Date(j.finished_at*1000).toLocaleString()}</td>
+        <td>${dur(j.duration_s)}</td>
+        <td>${j.filament_m ? t1(j.filament_m)+" m" : "—"}</td>
+        <td${j.grams_estimated ? ' title="No material identified — uses the 0.33 m/g PLA/PETG average"' : ""}>${
+          j.filament_g ? t1(j.filament_g)+" g"+(j.grams_estimated?" *":"") : "—"}</td>
+        <td>${j.status||"—"}</td></tr>`).join("");
+  }catch(e){}
+}
+
+$("lightBtn").onclick = async () => {
+  const want = !lightOn;
+  $("lightBtn").disabled = true;
+  try{
+    const r = await fetch("/api/light", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({on: want})});
+    const res = await r.json();
+    if (!res.ok) {
+      $("banner").style.display = "block";
+      $("banner").className = "banner stale";
+      $("banner").textContent = res.reason || "Light did not change.";
+      setTimeout(()=>{ $("banner").style.display="none"; }, 8000);
+    }
+    lightOn = !!res.on;                 // trust the re-read, never the command
+    $("lightBtn").classList.toggle("on", lightOn);
+    $("lightBtn").textContent = "Light " + (lightOn?"on":"off");
+  } finally { $("lightBtn").disabled = false; tick(); }
+};
+
+// Toggling the camera tears down the MJPEG connection — these printers only
+// serve a couple of concurrent streams.
+$("camBtn").onclick = async () => {
+  camOn = !camOn;
+  $("camBtn").classList.toggle("on", camOn);
+  const box = $("camBox");
+  if (camOn) {
+    box.innerHTML = '<div class="cam-off">Starting stream…</div>';
+    try {
+      await fetch("/api/camera", {method:"POST", headers:{"Content-Type":"application/json"},
+                                  body: JSON.stringify({on:true})});
+    } catch(e){}
+    if (!camOn) return;              // user toggled back off while we waited
+    box.innerHTML = '<img id="camImg" alt="printer camera">';
+    $("camImg").src = "/camera/stream?t=" + Date.now();
+    $("camImg").onerror = () => { box.innerHTML = '<div class="cam-off">Camera unavailable</div>'; };
+  } else {
+    const img = $("camImg");
+    if (img) img.src = "";           // drop the MJPEG connection
+    box.innerHTML = '<div class="cam-off">Camera off</div>';
+    // The shared camera hub stops when the last viewer/recorder leaves.
+  }
+};
+
+$("clearBtn").onclick = async () => {
+  $("clearBtn").disabled = true;
+  try{
+    const r = await fetch("/api/clear_job", {method:"POST"});
+    const res = await r.json();
+    if (!res.ok) {
+      $("banner").style.display = "block";
+      $("banner").className = "banner stale";
+      $("banner").textContent = res.reason || "Finish dialog did not clear.";
+      setTimeout(()=>{ $("banner").style.display="none"; }, 8000);
+    }
+  } finally { $("clearBtn").disabled = false; tick(); }
+};
+
+tick(); loadHistory();
+setInterval(tick, 3000);
+setInterval(loadHistory, 60000);
+</script>
+<script src="{{ url_for('static', filename='automation-home.js') }}" defer></script>
+</body>
+</html>

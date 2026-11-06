@@ -1,0 +1,22 @@
+name: printer-studio
+
+services:
+  printer-studio:
+    build: .
+    image: printer-studio:local
+    container_name: printer-studio
+    restart: unless-stopped
+    init: true
+    cpus: "1.0"
+    mem_limit: 768m
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "5012:5000"
+    env_file: .env
+    volumes:
+      - ./data:/data
