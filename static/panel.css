@@ -25,6 +25,10 @@
          text-decoration:none;display:inline-block}
   a.btn:hover,button:hover{border-color:#3a4756;background:#222a34}
   button.on{background:rgba(76,154,255,.15);border-color:var(--accent);color:#9dc4ff}
+  button.danger{border-color:var(--err);color:#ffb4ae;background:rgba(248,81,73,.1)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .job-controls{margin-top:16px}
+  .job-controls p{margin:8px 0 0}
   .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
   .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);

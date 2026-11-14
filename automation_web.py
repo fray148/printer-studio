@@ -50,7 +50,7 @@ def register_automation(app, manager):
 
     @app.after_request
     def automation_headers(response):
-        if request.path.startswith(('/api/automation','/automation','/bot')):
+        if request.path.startswith(('/api/automation','/automation','/bot','/events')):
             response.headers['Cache-Control']='no-store'
             response.headers['X-Content-Type-Options']='nosniff'
             response.headers['Content-Security-Policy']="frame-ancestors 'self'"
@@ -65,6 +65,24 @@ def register_automation(app, manager):
     def automation_state():
         return jsonify(settings=manager.settings(), recordings=manager.recordings(),
                        active=manager.active['id'] if manager.active else None)
+
+    @app.get('/events')
+    def events_page():
+        return render_template('events.html')
+
+    @app.get('/api/automation/events')
+    def events_list():
+        before=request.args.get('before')
+        if before is not None:
+            try:
+                before=int(before)
+                if before<1:raise ValueError()
+            except ValueError:
+                return jsonify(error='Некорректный номер события.'),400
+        kind=request.args.get('kind','')
+        if kind not in ('','print','pause','tool','state','error','connection'):
+            return jsonify(error='Неизвестный тип события.'),400
+        return jsonify(events=manager.events(before,kind))
 
     @app.post('/api/automation/settings')
     @protected

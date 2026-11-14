@@ -7,7 +7,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py materials.py automation.py automation_web.py zmod.py ./
+COPY app.py materials.py automation.py automation_web.py ./
 COPY static/ static/
 COPY templates/ templates/
 COPY LICENSE FORK.md VERSION ./

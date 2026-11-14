@@ -36,6 +36,74 @@ class AutomationFixture(unittest.TestCase):
         return dict(status=state,printing=state=='printing',job=dict(file=name,progress=progress),error_code=0)
 
 class AutomationTests(AutomationFixture):
+    def test_filament_maintenance_does_not_notify_or_record(self):
+        self.a.save_settings(dict(bot_token=TOKEN,chat_id='42',telegram_enabled=True,auto_record=True))
+        for state in ('ready','heating','busy','printing','loading','paused','ready'):
+            status=self.print_status(state,name='')
+            status['printing']=state in ('heating','busy','printing')
+            self.a.observe(status)
+        self.assertEqual(self.a.events(),[])
+        self.assertIsNone(self.a.active)
+        with self.a.connect() as con:
+            self.assertEqual(con.execute('SELECT count(*) FROM outbox').fetchone()[0],0)
+
+    def test_heating_with_old_filename_waits_for_actual_printing(self):
+        with patch.object(self.a,'enqueue') as notify:
+            for state in ('heating','busy','ready'):
+                status=self.print_status(state)
+                status['printing']=state in ('heating','busy')
+                self.a.observe(status)
+            notify.assert_not_called()
+            self.a.observe(self.print_status())
+            self.assertEqual(notify.call_count,1)
+
+    def test_legacy_nameless_job_does_not_resume_or_finish(self):
+        self.a.last_state=dict(status='heating',printing=True,file='')
+        with patch.object(self.a,'enqueue') as notify:
+            self.a.observe(self.print_status('loading',name=''))
+            self.a.observe(self.print_status('ready',name=''))
+            notify.assert_not_called()
+        self.assertEqual(self.a.events(),[])
+
+    def test_events_persist_without_telegram_and_tool_gaps_do_not_duplicate(self):
+        status=self.print_status()
+        status['material_station']={'slots':[{'id':1,'active':True}]}
+        self.a.observe(status);self.a.observe(status)
+        self.a.observe(self.print_status('changing_filament'))
+        status['material_station']['slots'][0]['id']=2
+        self.a.observe(status);self.a.observe(status)
+        self.a.observe(self.print_status('pausing'))
+        self.a.observe(self.print_status('paused'))
+        self.a.observe(status)
+        self.a.observe(self.print_status('completed'))
+        restarted=Automation(self.tmp.name,lambda:{},Camera())
+        events=restarted.events()
+        self.assertEqual(sum(e['kind']=='tool' for e in events),1)
+        self.assertEqual(sum(e['kind']=='pause' for e in events),2)
+        self.assertEqual(sum(e['kind']=='print' for e in events),2)
+        self.assertTrue(any('1 → 2' in e['message'] for e in events))
+        self.assertTrue(all(e['file']=='part.gcode' for e in events))
+    def test_connection_events_debounce_and_survive_restart(self):
+        with patch('automation.time.time',return_value=100):self.a.observe({'_stale':True})
+        with patch('automation.time.time',return_value=120):self.a.observe({'_stale':True})
+        self.assertEqual(self.a.events(),[])
+        restarted=Automation(self.tmp.name,lambda:{},Camera())
+        with patch('automation.time.time',return_value=131):
+            restarted.observe({'_stale':True});restarted.observe({'_stale':True})
+        restarted.observe(self.print_status('ready'))
+        restarted.observe(self.print_status('ready'))
+        self.assertEqual(len(restarted.events(kind='connection')),2)
+    def test_event_retention_and_pagination(self):
+        with self.a.connect() as con:
+            con.executemany('INSERT INTO events(created,kind,message,file) VALUES(?,?,?,?)',
+                            [(1,'print','test','')]*10001)
+        self.a.log_event('error','test')
+        with self.a.connect() as con:
+            self.assertEqual(con.execute('SELECT count(*) FROM events').fetchone()[0],10000)
+        first=self.a.events();second=self.a.events(before=first[-1]['id'])
+        self.assertEqual(len(first),100);self.assertEqual(len(second),100)
+        self.assertLess(second[0]['id'],first[-1]['id'])
+        self.assertEqual(len(self.a.events(kind='error')),1)
     def test_capture_shares_single_lease_and_stop_releases(self):
         self.a.start_recording('Part');self.frame();self.frame()
         self.assertEqual(self.camera.leases,1);self.assertEqual(self.a.active['frames'],2)
@@ -96,6 +164,56 @@ class AutomationTests(AutomationFixture):
         self.a.save_settings(dict(bot_token=TOKEN,chat_id='42',telegram_enabled=True))
         self.a.observe(self.print_status());self.a.observe(self.print_status())
         with self.a.connect() as con:self.assertEqual(con.execute('SELECT count(*) FROM outbox').fetchone()[0],1)
+    def test_tool_change_keeps_job_and_progress_across_restart(self):
+        self.a.save_settings(dict(bot_token=TOKEN,chat_id='42',telegram_enabled=True))
+        self.a.observe(self.print_status(progress=30))
+        self.a.observe(self.print_status('changing_filament',progress=30))
+        restarted=Automation(self.tmp.name,lambda:{},Camera())
+        restarted.observe(self.print_status('changing_filament',progress=30))
+        restarted.observe(self.print_status(progress=31))
+        with restarted.connect() as con:messages=[r[0] for r in con.execute('SELECT body FROM outbox')]
+        self.assertEqual(sum('Началась печать' in m for m in messages),1)
+        self.assertEqual(sum('Печать: 30%' in m for m in messages),1)
+        restarted.observe(self.print_status('completed',progress=100))
+        restarted.observe(self.print_status(progress=1))
+        with restarted.connect() as con:messages=[r[0] for r in con.execute('SELECT body FROM outbox')]
+        self.assertEqual(sum('Началась печать' in m for m in messages),2)
+    def test_transient_states_keep_recording_and_progress(self):
+        self.a.save_settings(dict(bot_token=TOKEN,chat_id='42',telegram_enabled=True,auto_record=True))
+        self.a.observe(self.print_status(progress=30));ident=self.a.active['id']
+        for state in ('changing_filament','unknown','heating','printing'):
+            self.a.observe(self.print_status(state,name='',progress=30))
+            self.assertEqual(self.a.active['id'],ident)
+            self.assertEqual(self.a.last_state['file'],'part.gcode')
+            self.assertEqual(self.a.get_state('progress'),25)
+        self.a.observe(self.print_status(progress=31))
+        with self.a.connect() as con:messages=[r[0] for r in con.execute('SELECT body FROM outbox')]
+        self.assertEqual(sum('Началась печать' in m for m in messages),1)
+    def test_pause_transitions_notify_once_and_resume_same_job(self):
+        self.a.save_settings(dict(bot_token=TOKEN,chat_id='42',telegram_enabled=True))
+        for state in ('printing','pausing','paused','pause','printing'):
+            self.a.observe(self.print_status(state))
+        with self.a.connect() as con:messages=[r[0] for r in con.execute('SELECT body FROM outbox')]
+        self.assertEqual(sum('на паузе' in m for m in messages),1)
+        self.assertEqual(sum('Началась печать' in m for m in messages),1)
+    def test_terminal_after_tool_change_notifies_once(self):
+        for terminal in ('completed','finished','cancelled','error','idle','ready'):
+            with self.subTest(terminal=terminal), patch.object(self.a,'enqueue') as notify:
+                self.a.last_state={}
+                self.a.observe(self.print_status())
+                self.a.observe(self.print_status('changing_filament'))
+                self.a.observe(self.print_status(terminal,name=''))
+                self.a.observe(self.print_status(terminal,name=''))
+                self.assertEqual(notify.call_count,2)
+    def test_different_job_after_tool_change_starts_new_recording(self):
+        self.a.save_settings(dict(auto_record=True))
+        self.a.observe(self.print_status());ident=self.a.active['id']
+        self.a.observe(self.print_status('changing_filament'))
+        with patch.object(self.a,'enqueue') as notify:
+            self.a.observe(self.print_status(name='other.gcode'))
+        self.assertNotEqual(self.a.active['id'],ident)
+        self.assertEqual(self.a.active['label'],'other.gcode')
+        self.assertEqual(notify.call_count,1)
     def test_failed_auto_start_does_not_repeat_start_notifications(self):
         self.a.save_settings(dict(bot_token=TOKEN,chat_id='42',telegram_enabled=True,auto_record=True))
         with patch.object(self.a,'check_space',side_effect=AutomationError('No space')):
@@ -139,6 +257,14 @@ class AutomationTests(AutomationFixture):
         self.assertEqual(len(self.a.recordings()),105)
 
 class WebTests(AutomationFixture):
+    def test_events_routes_and_invalid_filters(self):
+        self.a.log_event('error','Ошибка','part.gcode')
+        self.assertEqual(self.client.get('/events').status_code,200)
+        response=self.client.get('/api/automation/events?kind=error')
+        self.assertEqual(response.json['events'][0]['file'],'part.gcode')
+        self.assertEqual(response.headers['Cache-Control'],'no-store')
+        for query in ('before=bad','before=-1','kind=bad'):
+            self.assertEqual(self.client.get('/api/automation/events?'+query).status_code,400)
     def setUp(self):
         super().setUp();self.app=Flask(__name__,template_folder=str(ROOT/'templates'),static_folder=str(ROOT/'static'))
         self.app.testing=True;register_automation(self.app,self.a);self.client=self.app.test_client()
@@ -198,3 +324,16 @@ class EncodeTests(unittest.TestCase):
                     self.assertEqual(len(response.data),32)
 
 if __name__=='__main__':unittest.main()
+
+class NormalizedPrintStateTests(unittest.TestCase):
+    def test_maintenance_without_filename_is_not_printing(self):
+        import ast
+        tree=ast.parse((ROOT/'app.py').read_text())
+        functions=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in ('pick','to_float','normalize')]
+        namespace={'PRINTER_HOST':'test'}
+        exec(compile(ast.Module(body=functions,type_ignores=[]),'app.py','exec'),namespace)
+        for state in ('heating','busy','printing','loading','ready'):
+            with self.subTest(state=state):
+                self.assertFalse(namespace['normalize']({'status':state})['printing'])
+        self.assertFalse(namespace['normalize']({'status':'printing','printFileName':'  '})['printing'])
+        self.assertTrue(namespace['normalize']({'status':'printing','printFileName':'part.gcode'})['printing'])

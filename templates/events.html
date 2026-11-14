@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Журнал событий · Printer Studio</title><link rel="stylesheet" href="{{ url_for('static', filename='panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='events.css') }}"></head>
+<body><main class="wrap"><header><div><h1>Журнал событий</h1><div class="sub">Printer Studio v{{ app_version }} · Creator 5 Pro</div></div><div class="spacer"></div>
+<a class="btn" href="/">Панель</a><a class="btn" href="/materials">Материалы</a><a class="btn" href="/automation">Таймлапсы</a><a class="btn" href="/bot">Бот</a></header>
+<section class="card"><div class="event-controls"><label>События <select id="event-kind"><option value="">Все</option><option value="print">Печать</option><option value="pause">Паузы</option><option value="tool">Инструменты</option><option value="state">Состояния</option><option value="error">Ошибки</option><option value="connection">Связь</option></select></label><button id="refresh">Обновить</button><span class="sub" id="event-status" role="status">Загрузка…</span></div>
+<p class="sub">Последние 10 000 событий. Время — по часовому поясу устройства. Журнал сохраняется после перезапуска; события собираются с момента установки.</p>
+<div class="event-scroll"><table><thead><tr><th>Время</th><th>Тип</th><th>Событие</th><th>Файл</th></tr></thead><tbody id="events"></tbody></table></div>
+<p id="event-empty" hidden>Событий пока нет.</p><button id="more" hidden>Показать ещё</button></section></main><script src="{{ url_for('static', filename='events.js') }}" defer></script></body></html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Printer Studio · Creator 5 Pro</title>
+<title>Printer Studio v{{ app_version }} · Creator 5 Pro</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='panel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='automation.css') }}">
 </head>
@@ -13,7 +13,7 @@
   <header>
     <div>
       <h1>Creator 5 Pro</h1>
-      <div class="sub">Printer Studio ZMOD v{{ app_version }} · {{ printer_host }}</div>
+      <div class="sub">Printer Studio v{{ app_version }} · {{ printer_host }}</div>
     </div>
     <span class="pill"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
     <div class="spacer"></div>
@@ -24,7 +24,7 @@
     <button id="lightBtn">Light</button>
     <button id="camBtn">Camera</button>
     <button id="clearBtn" style="display:none">Clear finish dialog</button>
-  </header>
+  <a class="btn" href="/events">Журнал событий</a></header>
 
   <div class="banner" id="banner"></div>
 
@@ -41,6 +41,11 @@
       <div class="row"><span>Remaining</span><span id="jobLeft">—</span></div>
       <div class="row"><span>Speed</span><span id="jobSpeed">—</span></div>
       <div class="row"><span>Filament used</span><span id="jobFil">—</span></div>
+      <div class="job-controls">
+        <button id="pauseBtn" type="button" disabled>Пауза</button>
+        <button id="cancelBtn" class="danger" type="button" disabled>Отменить печать</button>
+        <p id="cancelResult" class="sub" role="status" aria-live="polite"></p>
+      </div>
     </div>
 
     <div class="card">
@@ -133,6 +138,66 @@ const t1 = v => (v==null? "—" : (Math.round(v*10)/10).toFixed(1));
 let lightOn = false, camOn = false;
 let useF = localStorage.getItem("tempUnit") === "F";
 let lastData = null;
+const csrfToken = {{ csrf|tojson }};
+let cancelBusy = false, lastStatusAt = 0, cancelRequestedFile = null;
+let pausePendingState = null;
+function updateCancelButton(){
+  const d = lastData, file = d?.job?.file;
+  const available = d && !d._stale && !d._error && Date.now()-lastStatusAt < 10000
+    && ["printing", "paused", "pause", "pausing"].includes(d.status) && file?.trim();
+  $("cancelBtn").disabled = cancelBusy || !available || cancelRequestedFile === file;
+  $("cancelBtn").textContent = cancelBusy ? "Отправка отмены…" : "Отменить печать";
+  const paused = ["paused", "pause"].includes(d?.status);
+  $("pauseBtn").disabled = cancelBusy || !available || !["printing", "paused", "pause"].includes(d?.status)
+    || cancelRequestedFile === file || pausePendingState === d?.status;
+  $("pauseBtn").textContent = cancelBusy ? "Отправка команды…" : paused ? "Возобновить печать" : "Пауза";
+}
+$("pauseBtn").onclick = async () => {
+  updateCancelButton();
+  if ($("pauseBtn").disabled) return;
+  const file = lastData.job.file, state = lastData.status;
+  const action = ["paused", "pause"].includes(state) ? "resume" : "pause";
+  cancelBusy = true; updateCancelButton();
+  $("cancelResult").textContent = "Отправка команды…";
+  try {
+    const r = await fetch(`/api/${action}`, {method:"POST", headers:{
+      "Content-Type":"application/json", "X-CSRF-Token":csrfToken},
+      body:JSON.stringify({confirm:true, file})});
+    const result = await r.json();
+    if (!r.ok || !result.ok) throw new Error(result.error || "Команда не выполнена.");
+    pausePendingState = state;
+    $("cancelResult").textContent = result.message;
+  } catch (e) {
+    $("cancelResult").textContent = e.message + " Проверь состояние принтера перед повтором.";
+  } finally {
+    cancelBusy = false; updateCancelButton(); tick();
+  }
+};
+$("cancelBtn").onclick = async () => {
+  updateCancelButton();
+  if ($("cancelBtn").disabled) return;
+  const file = lastData.job.file;
+  if (!window.confirm(`Отменить печать «${file}»?\nПродолжить это задание после отмены будет нельзя.`)) return;
+  cancelBusy = true;
+  $("cancelResult").textContent = "Отправка команды отмены…";
+  updateCancelButton();
+  try {
+    const r = await fetch("/api/cancel", {method:"POST", headers:{
+      "Content-Type":"application/json", "X-CSRF-Token":csrfToken},
+      body:JSON.stringify({confirm:true, file})});
+    const result = await r.json();
+    if (!r.ok || !result.ok) throw new Error(result.error || "Не удалось отменить печать.");
+    cancelRequestedFile = file;
+    $("cancelResult").textContent = result.message;
+  } catch (e) {
+    $("cancelResult").textContent = e.message + " Проверь состояние принтера перед повтором.";
+  } finally {
+    cancelBusy = false;
+    updateCancelButton();
+    tick();
+  }
+};
+setInterval(updateCancelButton, 1000);
 
 const c2f = c => c==null ? null : c*9/5+32;
 const tconv = v => useF ? c2f(v) : v;
@@ -147,6 +212,13 @@ $("unitBtn").onclick = () => {
 
 function paint(d){
   lastData = d;
+  if (pausePendingState && pausePendingState !== d.status) pausePendingState = null;
+  lastStatusAt = Date.now();
+  if (cancelRequestedFile && (d.job?.file !== cancelRequestedFile ||
+      ["ready", "idle", "completed", "cancel", "cancelled", "canceled"].includes(d.status))) {
+    cancelRequestedFile = null;
+  }
+  updateCancelButton();
   const bad = !!d._error && d._stale;
   $("banner").style.display = d._error ? "block" : "none";
   $("banner").className = "banner" + (d._stale ? " stale" : "");
@@ -232,6 +304,7 @@ async function tick(){
     const r = await fetch("/api/status", {cache:"no-store"});
     const d = await r.json();
     if (!r.ok) {
+      lastStatusAt = 0; updateCancelButton();
       $("banner").style.display="block";
       $("banner").className="banner";
       $("banner").textContent = "Printer unreachable: " + (d._error||r.status);
@@ -240,7 +313,7 @@ async function tick(){
       return;
     }
     paint(d);
-  }catch(e){ /* transient; next tick retries */ }
+  }catch(e){ lastStatusAt = 0; updateCancelButton(); }
 }
 
 async function loadHistory(){

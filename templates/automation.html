@@ -8,8 +8,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='automation.css') }}">
 </head>
 <body class="automation-page {{ 'bot-page' if tab == 'bot' else '' }}" data-tab="{{ tab }}"><main class="wrap">
-<header><div><h1>Creator 5 Pro</h1><div class="sub">Printer Studio ZMOD v{{ app_version }} · {{ 'Telegram-бот' if tab == 'bot' else 'Таймлапсы' }}</div></div><div class="spacer"></div>
-<a class="btn" href="/">Панель</a><a class="btn" href="/materials">Материалы</a><a class="btn {{ 'selected' if tab != 'bot' else '' }}" href="/automation">Таймлапсы</a><a class="btn" href="/automation#files">Файлы</a><a class="btn {{ 'selected' if tab == 'bot' else '' }}" href="/bot">Бот</a></header>
+<header><div><h1>Creator 5 Pro</h1><div class="sub">Printer Studio v{{ app_version }} · {{ 'Telegram-бот' if tab == 'bot' else 'Таймлапсы' }}</div></div><div class="spacer"></div>
+<a class="btn" href="/">Панель</a><a class="btn" href="/materials">Материалы</a><a class="btn {{ 'selected' if tab != 'bot' else '' }}" href="/automation">Таймлапсы</a><a class="btn" href="/automation#files">Файлы</a><a class="btn {{ 'selected' if tab == 'bot' else '' }}" href="/bot">Бот</a><a class="btn" href="/events">Журнал событий</a></header>
 <div id="notice" class="notice" role="status" hidden></div>
 <section class="automation-grid">
 <article class="card" {{ 'hidden' if tab == 'bot' else '' }}><div class="card-top"><h2>Таймлапс</h2><span class="pill" id="capture-state">Загрузка…</span></div>

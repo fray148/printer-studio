@@ -55,10 +55,15 @@ class Automation:
                 finished REAL, frames INTEGER DEFAULT 0, error TEXT DEFAULT '',
                 source TEXT, fps INTEGER, interval INTEGER, size INTEGER DEFAULT 0);
               CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT);
+              CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY, created REAL NOT NULL,
+                kind TEXT NOT NULL, message TEXT NOT NULL, file TEXT NOT NULL);
               CREATE TABLE IF NOT EXISTS outbox (
                 id INTEGER PRIMARY KEY, kind TEXT, body TEXT, media TEXT,
                 chat TEXT, attempts INTEGER DEFAULT 0, next_try REAL DEFAULT 0);
             ''')
+            if 'details' not in {row[1] for row in con.execute('PRAGMA table_info(events)')}:
+                con.execute("ALTER TABLE events ADD COLUMN details TEXT NOT NULL DEFAULT '{}'")
         os.chmod(self.db, 0o600)
         self.active = None
         self.next_frame = 0
@@ -332,22 +337,126 @@ class Automation:
 
     @staticmethod
     def status_text(status):
-        job=status.get('job',{});temps=status.get('temps',{})
-        return (f"Creator 5 Pro · {status.get('status','нет данных')}\n"
-                f"{job.get('file') or 'Нет задания'}\n"
-                f"Прогресс: {job.get('progress',0)}% · слой {job.get('layer',0)}/{job.get('layer_total',0)}\n"
-                f"Сопло: {temps.get('nozzle',0)} °C · стол: {temps.get('bed',0)} °C")
+        job=status.get('job') or {};temps=status.get('temps') or {}
+        def number(value):
+            try:return f'{float(value):g}' if value is not None else '—'
+            except (TypeError,ValueError):return '—'
+        def duration(value):
+            try:
+                minutes=max(0,int(float(value)))//60
+                return f'{minutes//60} ч {minutes%60} мин'
+            except (TypeError,ValueError):return '—'
+        names={'printing':'Печать','busy':'Занят','heating':'Нагрев',
+               'ready':'Готов','idle':'Ожидание','completed':'Завершено',
+               'paused':'Пауза','pausing':'Постановка на паузу','pause':'Пауза',
+               'error':'Ошибка','failed':'Сбой','cancelled':'Отменено'}
+        state=str(status.get('status','unknown'))
+        lines=[f"{status.get('name') or 'Creator 5 Pro'} · {names.get(state,state)}",
+               str(job.get('file') or 'Нет задания')[:500],
+               f"Прогресс: {number(job.get('progress'))}% · слой {number(job.get('layer'))}/{number(job.get('layer_total'))}",
+               f"Прошло: {duration(job.get('elapsed_s'))} · осталось: {duration(job.get('remaining_s'))}",
+               f"Скорость: {number(job.get('speed_mm_s'))} мм/с · {number(job.get('speed_pct'))}%",
+               '', 'Температуры (текущая → заданная):']
+        nozzles=status.get('nozzles') or []
+        for nozzle in nozzles[:4]:
+            lines.append(f"Сопло {number(nozzle.get('id'))}: {number(nozzle.get('temp'))} → {number(nozzle.get('target'))} °C")
+        if not nozzles:
+            lines.append(f"Сопло: {number(temps.get('nozzle'))} → {number(temps.get('nozzle_target'))} °C")
+        lines.extend([f"Стол: {number(temps.get('bed'))} → {number(temps.get('bed_target'))} °C",
+                      f"Камера: {number(temps.get('chamber'))} °C"])
+        slots=(status.get('material_station') or {}).get('slots') or []
+        if slots:
+            lines.extend(['','Филаменты:'])
+            for slot in slots[:4]:
+                active=' · активен' if slot.get('active') else ''
+                material=str(slot.get('material') or 'не указан')[:60]
+                loaded='загружен' if slot.get('loaded') else 'не загружен'
+                lines.append(f"Слот {number(slot.get('id'))}: {material}, {loaded}{active}")
+        if job.get('filament_g') is not None:
+            lines.append(f"Расход: ≈{number(job['filament_g'])} г · {number(job.get('filament_m'))} м")
+        machine=status.get('machine') or {}
+        if machine.get('disk_free_gb') is not None:
+            lines.append(f"Память принтера: свободно {number(machine['disk_free_gb'])} ГБ")
+        for key,title in (('door','Дверца'),('lid','Крышка')):
+            if machine.get(key) is not None:
+                value=str(machine[key]);lines.append(title+': '+{'open':'открыта','close':'закрыта','closed':'закрыта'}.get(value,value))
+        error=str(status.get('error_code') or '')
+        if error not in ('','0','none'):lines.append('Ошибка: '+error[:200])
+        if status.get('_stale'):lines.insert(0,'⚠ Данные устарели: связь с принтером потеряна.')
+        return '\n'.join(lines)[:4000]
+
+    def log_event(self, kind, message, label='', details=None):
+        with self.connect() as con:
+            con.execute('INSERT INTO events(created,kind,message,file,details) VALUES(?,?,?,?,?)',
+                        (time.time(),kind,message[:1000],label[:500],json.dumps(details or {})))
+            con.execute('DELETE FROM events WHERE id <= (SELECT MAX(id)-10000 FROM events)')
+
+    def events(self, before=None, kind=''):
+        clauses=[];params=[]
+        if before is not None:
+            clauses.append('id < ?');params.append(before)
+        if kind:
+            clauses.append('kind = ?');params.append(kind)
+        where=' WHERE '+' AND '.join(clauses) if clauses else ''
+        with self.connect() as con:
+            rows=[dict(row) for row in con.execute(
+                'SELECT * FROM events'+where+' ORDER BY id DESC LIMIT 100',params)]
+        for row in rows:
+            row['details']=json.loads(row['details'])
+        return rows
+
+    @staticmethod
+    def tool_details(slots, old, new, source='observed'):
+        def entry(ident):
+            slot=next((s for s in slots if str(s.get('id'))==str(ident)),{})
+            color=str(slot.get('color') or '')
+            return dict(id=ident,color=color if re.fullmatch(r'#[0-9a-fA-F]{6}',color) else None)
+        return dict(from_tool=entry(old),to_tool=entry(new),color_source=source)
+
+    def backfill_tool_colors(self, slots):
+        count=0
+        with self.connect() as con:
+            for row in con.execute("SELECT id,message FROM events WHERE kind='tool' AND details='{}'").fetchall():
+                match=re.fullmatch(r'Смена инструмента: (\d+) → (\d+)',row['message'])
+                if not match:continue
+                details=self.tool_details(slots,int(match[1]),int(match[2]),'current_slots')
+                if not all(details[key]['color'] for key in ('from_tool','to_tool')):continue
+                con.execute('UPDATE events SET details=? WHERE id=?',(json.dumps(details),row['id']))
+                count+=1
+        return count
 
     def observe(self, status):
         if not status or status.get('_stale'):
+            since=self.get_state('connection_missing_since',0)
+            if not since:
+                self.set_state('connection_missing_since',time.time())
+            elif time.time()-since>=30 and not self.get_state('connection_lost',False):
+                self.log_event('connection','Потеряна связь с принтером')
+                self.set_state('connection_lost',True)
             return
-        state=status.get('status','unknown'); job=status.get('job',{}); label=job.get('file','')
+        if self.get_state('connection_missing_since',0):
+            if self.get_state('connection_lost',False):
+                self.log_event('connection','Связь с принтером восстановлена')
+            self.set_state('connection_missing_since',0)
+            self.set_state('connection_lost',False)
+        state=status.get('status','unknown'); job=status.get('job',{}); label=str(job.get('file') or '').strip()
         printing=bool(status.get('printing')); previous=self.last_state
-        was_printing=previous.get('printing',False) or previous.get('status') in PAUSED
+        # A maintenance cycle can report heating/busy/printing without a file.
+        # Also discard legacy persisted false jobs from before this guard.
+        was_printing=bool(previous.get('file')) and (previous.get('printing',False) or previous.get('status') in PAUSED)
+        if not was_printing:
+            printing=printing and bool(label) and state=='printing'
+        if was_printing and state not in TERMINAL and not label:
+            label=previous.get('file','')
+        # Tool changes can temporarily report a non-printing, non-terminal
+        # state. Keep the job alive until an explicit terminal status arrives.
+        if was_printing and state not in TERMINAL and state not in PAUSED and label == previous.get('file'):
+            printing=True
         if printing and (not was_printing or previous.get('file') != label):
             if self.active and self.active['source']=='auto' and self.active['label']!=label:
                 self.finish('Началось другое задание.')
             self.enqueue('message','Началась печать: '+(label or 'Без названия'))
+            self.log_event('print','Началась печать',label)
             self.set_state('progress',0)
             self.set_state('auto_suppressed',False)
         if printing and self.config['auto_record'] and not self.active and not self.get_state('auto_suppressed',False):
@@ -358,21 +467,38 @@ class Automation:
                 # otherwise every poll repeats its start notification.
                 self.last_error=str(e)
                 self.set_state('auto_suppressed',True)
-        if state != previous.get('status') and state in PAUSED:
+        if was_printing and previous.get('status') not in PAUSED and state in PAUSED:
             self.enqueue('message','Печать на паузе: '+label)
+            self.log_event('pause','Печать на паузе',label)
+        if printing and was_printing and previous.get('status') in PAUSED:
+            self.log_event('pause','Печать возобновлена',label)
+        if was_printing and state != previous.get('status') and state not in TERMINAL and state not in PAUSED and not status.get('printing'):
+            self.log_event('state','Промежуточное состояние: '+str(state),label)
+        slots=(status.get('material_station') or {}).get('slots') or []
+        tools=[s.get('id') for s in slots if s.get('active') and s.get('id') is not None]
+        tool=tools[0] if len(tools)==1 else None
+        prior_tool=previous.get('tool') if previous.get('file')==label and was_printing else None
+        if printing and tool is not None and prior_tool is not None and tool!=prior_tool:
+            self.log_event('tool',f'Смена инструмента: {prior_tool} → {tool}',label,
+                           self.tool_details(slots,prior_tool,tool))
         if was_printing and not printing and state in TERMINAL:
             event='Печать завершена' if state in ('completed','finished') else 'Печать остановлена: '+state
             self.enqueue('message',event+'\n'+label)
+            self.log_event('print',event,label or previous.get('file',''))
             if self.active and self.active['source']=='auto':
                 self.finish(event)
         error=str(status.get('error_code') or '')
         if error and error not in ('0','none') and error!=previous.get('error'):
             self.enqueue('message','Ошибка принтера: '+error)
+            self.log_event('error','Ошибка принтера: '+error,label)
+        if previous.get('error') and previous['error'] not in ('0','none') and error in ('','0','none'):
+            self.log_event('error','Ошибка сброшена: '+previous['error'],label)
         step=self.config['notify_progress'];progress=float(job.get('progress',0) or 0)
         if printing and step and progress>=self.get_state('progress',0)+step:
             self.enqueue('message',f'Печать: {progress:.0f}%\n{label}')
             self.set_state('progress',int(progress//step)*step)
-        self.last_state=dict(status=state,printing=printing,file=label,error=error)
+        self.last_state=dict(status=state,printing=printing,file=label,error=error,
+                             tool=(tool if tool is not None else prior_tool) if printing or state in PAUSED else None)
         if self.last_state!=previous:
             self.set_state('printer',self.last_state)
 
@@ -422,10 +548,17 @@ class Automation:
             return
         command=str(message.get('text','')).split(' ',1)[0].split('@',1)[0]
         if command in ('/start','/help'):
-            self.enqueue('message','/status — состояние\n/photo — снимок камеры\n/timelapse — последнее видео\nБез команд движения и нагрева.')
+            self.enqueue('message','/status — подробный статус и фото\n/photo — снимок камеры\n/timelapse — последнее видео\nБез команд движения и нагрева.')
         elif command=='/status':
             status=self.status_provider()
-            self.enqueue('message',self.status_text(status) if status and not status.get('_stale') else 'Свежие данные принтера пока недоступны.')
+            self.enqueue('message',self.status_text(status) if status and status.get('status') else 'Свежие данные принтера пока недоступны.')
+            try:
+                frame=self.snapshot()
+                self.telegram_api(cfg,'sendPhoto',{'chat_id':cfg['chat_id'],
+                    'caption':'Снимок камеры по запросу /status'},
+                    {'photo':('camera.jpg',io.BytesIO(frame),'image/jpeg')})
+            except AutomationError:
+                self.enqueue('message','Фото недоступно: не удалось получить снимок или отправить его в Telegram.')
         elif command=='/photo':
             # Served by the bot thread: one snapshot, using the existing hub.
             frame=self.snapshot()
