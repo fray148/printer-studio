@@ -7,10 +7,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py materials.py automation.py automation_web.py ./
+COPY app.py materials.py automation.py automation_web.py zmod.py ./
 COPY static/ static/
 COPY templates/ templates/
-COPY LICENSE FORK.md ./
+COPY LICENSE FORK.md VERSION ./
 
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

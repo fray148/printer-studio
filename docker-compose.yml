@@ -1,10 +1,10 @@
-name: printer-studio
+name: printer-studio-zmod
 
 services:
-  printer-studio:
+  printer-studio-zmod:
     build: .
-    image: printer-studio:local
-    container_name: printer-studio
+    image: printer-studio-zmod:local
+    container_name: printer-studio-zmod
     restart: unless-stopped
     init: true
     cpus: "1.0"
@@ -16,7 +16,7 @@ services:
         max-size: "10m"
         max-file: "3"
     ports:
-      - "5012:5000"
+      - "5013:5000"
     env_file: .env
     volumes:
       - ./data:/data

@@ -1,15 +1,18 @@
-# Printer Studio — самостоятельный форк Creator 5 Pro Dashboard
+# Printer Studio ZMOD — самостоятельный форк Creator 5 Pro Dashboard
+
+Текущая версия: **1.5.0**. Изменения: [CHANGELOG.md](CHANGELOG.md).
 
 Доработка текущей панели на основе upstream 1.4.0, с сохранением её оформления,
 страницы материалов и управления камерой. Новые разделы: таймлапсы и Telegram.
 
 ## Размещение
 
-- Адрес: [http://192.168.1.35:5012/](http://192.168.1.35:5012/).
-- Принтер: Creator 5 Pro, **192.168.1.98**, штатная прошивка 2.0.0.
-- Compose-проект и контейнер: `printer-studio`.
-- Каталог сервера: `/home/fray/apps/printer-studio`.
-- Прямое подключение к принтеру по штатному HTTP API. Z-Mod и Moonraker не нужны.
+- После установки на сервер адрес будет `http://192.168.1.35:5013/`.
+- Локальный каталог: `/home/fray148/projects/printer-studio-zmod`.
+- Принтер: Creator 5 Pro, **192.168.1.98**, ZMOD установлен.
+- Compose-проект и контейнер: `printer-studio-zmod`.
+- Предлагаемый каталог сервера (ещё не установлен): `/home/fray/apps/printer-studio-zmod`.
+- Прямое подключение к Moonraker; штатный API опционален для данных FlashForge.
 - Панель на 5011 не является зависимостью. Её остановка не останавливает этот форк.
 - Собственные `.env`, сеть Compose и каталог `data`; общих файлов с 5011 нет.
 
@@ -72,21 +75,21 @@
 В каталоге проекта на сервере:
 
 ```sh
-docker compose -p printer-studio -f docker-compose.yml up -d --build
-docker compose -p printer-studio -f docker-compose.yml ps
-docker compose -p printer-studio -f docker-compose.yml logs --tail=100
+docker compose -p printer-studio-zmod -f docker-compose.yml up -d --build
+docker compose -p printer-studio-zmod -f docker-compose.yml ps
+docker compose -p printer-studio-zmod -f docker-compose.yml logs --tail=100
 ```
 
 Повторный запуск без пересборки:
 
 ```sh
-docker compose -p printer-studio -f docker-compose.yml up -d
+docker compose -p printer-studio-zmod -f docker-compose.yml up -d
 ```
 
 Остановка только этого форка:
 
 ```sh
-docker compose -p printer-studio -f docker-compose.yml stop
+docker compose -p printer-studio-zmod -f docker-compose.yml stop
 ```
 
 `.env` создаётся по `.env.example`. Реальные серийный номер и код доступа не
@@ -94,9 +97,9 @@ docker compose -p printer-studio -f docker-compose.yml stop
 на сервере, не меняя её конфигурацию. Ключи Telegram сохраняются отдельно в
 `data/automation/settings.json` с правами 0600 и не возвращаются API браузеру.
 Токен и `chat_id` вводятся позже на вкладке
-[«Бот»](http://192.168.1.35:5012/bot).
+[«Бот»](http://192.168.1.35:5013/bot).
 
-Новый проект не меняет Nginx Proxy Manager и TinyAuth. Порт 5012 доступен в
+Новый проект не меняет Nginx Proxy Manager и TinyAuth. Порт 5013 доступен в
 локальной сети; для доступа извне подключается существующая схема NPM/TinyAuth.
 
 ## Проверки

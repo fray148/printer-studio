@@ -2,6 +2,7 @@
 import json
 import math
 import os
+from pathlib import Path
 import re
 import threading
 import time
@@ -10,8 +11,13 @@ import requests
 from flask import Flask, Response, jsonify, render_template, request
 
 import materials
+from zmod import Moonraker
 
 PRINTER_HOST = os.environ.get("PRINTER_HOST", "192.168.1.100")
+BACKEND = os.environ.get("PRINTER_BACKEND", "zmod").lower()
+if BACKEND not in ("flashforge", "zmod"):
+    raise ValueError("PRINTER_BACKEND must be flashforge or zmod")
+moonraker = Moonraker(PRINTER_HOST) if BACKEND == "zmod" else None
 API_PORT = int(os.environ.get("PRINTER_API_PORT", "8898"))
 CAM_PORT = int(os.environ.get("PRINTER_CAM_PORT", "8080"))
 CAM_PATH = os.environ.get("PRINTER_CAM_PATH", "/?action=stream")
@@ -24,7 +30,15 @@ BASE = f"http://{PRINTER_HOST}:{API_PORT}"
 CAM_URL = f"http://{PRINTER_HOST}:{CAM_PORT}{CAM_PATH}"
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 
+APP_VERSION = Path(__file__).with_name("VERSION").read_text().strip()
+
 app = Flask(__name__)
+
+
+@app.context_processor
+def version_context():
+    return {"app_version": APP_VERSION}
+
 
 # Cache the last good poll so the UI degrades gracefully if the printer sleeps.
 _cache = {"detail": None, "ts": 0, "error": None}
@@ -125,6 +139,30 @@ def ff_post(path, extra=None, timeout=8):
 def fetch_detail():
     """Return (detail_dict, error_string)."""
     try:
+        if moonraker:
+            detail = moonraker.detail()
+            # Stock firmware can still supply vendor-only information (slots,
+            # lifetime counters, TVOC, disk, firmware). Moonraker owns live
+            # print state and temperatures. A failed optional read must not
+            # make monitoring unavailable.
+            if SERIAL and CHECK_CODE:
+                try:
+                    native, _ = fetch_native_detail()
+                    if native:
+                        if not detail.get('_light_available') and 'lightStatus' in native:
+                            detail['lightStatus'] = native['lightStatus']
+                            detail['_light_available'] = True
+                        detail = {**native, **detail}
+                except Exception:
+                    pass
+            return detail, None
+        return fetch_native_detail()
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+def fetch_native_detail():
+    try:
         data = ff_post("/detail")
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
@@ -185,6 +223,8 @@ def normalize(d):
     elif nozzles:
         active = max(nozzles, key=lambda n: n["temp"])
     active = active or {"id": 0, "temp": 0, "target": 0}
+    if d.get('_active_nozzle'):
+        active = next((n for n in nozzles if n['id'] == d['_active_nozzle']), active)
 
     # Material station (4-slot AMS-style feeder).
     ms = d.get("matlStationInfo") or {}
@@ -207,6 +247,8 @@ def normalize(d):
         "name": pick(d, "name", "machineName", default="Creator 5 Pro"),
         "model": pick(d, "model", default=""),
         "status": status,
+        "backend": BACKEND,
+        "light_available": d.get('_light_available', True),
         "printing": status in ("printing", "busy", "heating"),
         "error_code": pick(d, "errorCode", default=""),
         "firmware": pick(d, "firmwareVersion", default=""),
@@ -217,7 +259,8 @@ def normalize(d):
         "has_camera": bool(d.get("camera")),
         "job": {
             "file": pick(d, "printFileName", "fileName", default=""),
-            "has_thumb": bool(pick(d, "printFileThumbUrl", default="")),
+            "has_thumb": bool(pick(d, "printFileThumbUrl", default="")) or
+                         (d.get('_backend') == 'zmod' and bool(d.get('printFileName'))),
             "progress": round(progress, 1),
             "layer": to_float(pick(d, "printLayer"), 0),
             "layer_total": to_float(pick(d, "targetPrintLayer"), 0),
@@ -244,6 +287,7 @@ def normalize(d):
             "current_slot": ms.get("currentSlot"),
         },
         "filament": {
+            "counter_m": d.get('_job_filament_m', to_float(d.get('cumulativeFilament'), 0)),
             "left_type": pick(d, "leftFilamentType", default=""),
             "right_type": pick(d, "rightFilamentType", default=""),
             "est_len_m": to_float(pick(d, "estimatedRightLen"), 0),
@@ -330,7 +374,7 @@ def track_filament(hist, n):
     a job we caught from the start is only seconds old on the first poll.
     """
     cur = hist.get("current") or {}
-    cum = n["filament"]["cumulative_m"]
+    cum = n["filament"].get("counter_m", n["filament"]["cumulative_m"])
     fname = n["job"]["file"]
 
     if cur.get("file") != fname:
@@ -338,7 +382,8 @@ def track_filament(hist, n):
         cur = {
             "file": fname,
             "started_at": int(time.time()),
-            "start_cum_m": None if missed_start else cum,
+            "start_cum_m": (0 if n.get('backend') == 'zmod'
+                            else None if missed_start else cum),
             "last_cum_m": cum,
             "material": job_material(n),
             # Per-filament breakdown for this job, keyed material|colour. Unlike
@@ -427,7 +472,7 @@ def poller():
 
         if detail:
             n = normalize(detail)
-            printing = n["printing"]
+            printing = n["printing"] or n['status'] in ('paused', 'pausing', 'pause')
             hist = load_history()
             cur = hist.get("current") or {}
 
@@ -443,7 +488,7 @@ def poller():
             elif last_printing and cur.get("file"):
                 # printing -> not printing == a finished job. Fold in the last
                 # counter value first; it can still tick up on the final poll.
-                delta = advance_counter(cur, n["filament"]["cumulative_m"])
+                delta = advance_counter(cur, n["filament"].get("counter_m", n["filament"]["cumulative_m"]))
                 if delta:
                     attribute(cur, n, delta)
                 length_m = current_filament_m(cur)
@@ -470,7 +515,7 @@ def poller():
 @app.route("/")
 def index():
     return render_template("index.html", printer_host=PRINTER_HOST,
-                           configured=bool(SERIAL and CHECK_CODE))
+                           configured=bool(moonraker or (SERIAL and CHECK_CODE)))
 
 
 def attach_live_filament(out):
@@ -522,6 +567,15 @@ def ff_control(cmd, args):
     load-bearing. Don't "tidy" them.
     """
     try:
+        if moonraker:
+            if cmd == 'lightControl_cmd':
+                moonraker.light(args.get('status') == 'open')
+                return True, {}
+            if cmd == 'streamCtrl':
+                # ZMOD's camera is configured independently; never stop it for
+                # other consumers (Fluidd, Mainsail, or another recorder).
+                return True, {'shared': True}
+            return False, {'error': 'Command unavailable in ZMOD mode'}
         res = ff_post("/control", {"payload": {"cmd": cmd, "args": args}})
         return res.get("code") == 0, {"res": res}
     except Exception as exc:
@@ -534,7 +588,14 @@ def api_light():
     including nonsense ones — so the reply proves nothing. Confirm by re-reading
     lightStatus instead of trusting it."""
     want_on = bool((request.get_json(silent=True) or {}).get("on"))
-    ff_control("lightControl_cmd", {"status": "open" if want_on else "close"})
+    ok, info = ff_control("lightControl_cmd", {"status": "open" if want_on else "close"})
+    if not ok:
+        return jsonify({'ok': False, **info}), 502
+    if moonraker:
+        detail, error = fetch_detail()
+        if not detail or not detail.get('_light_available'):
+            return jsonify(ok=True, on=want_on, confirmed=False,
+                           reason='LED macro sent; light status unavailable')
 
     for _ in range(4):
         time.sleep(0.8)
@@ -564,6 +625,19 @@ def api_clear_job():
     /api/light, the /control reply proves nothing — confirm by re-reading
     status.
     """
+    if moonraker:
+        detail, error = fetch_detail()
+        if not detail:
+            return jsonify(ok=False, reason=error), 502
+        if detail.get('status') != 'completed':
+            return jsonify(ok=False, reason='No completed print dialog to close'), 409
+        try:
+            moonraker.clear_finish_dialog()
+        except Exception as exc:
+            return jsonify(ok=False, reason=str(exc)), 502
+        # Closing the native screen does not necessarily reset print_stats.
+        return jsonify(ok=True, status='completed', confirmed=False,
+                       reason='Finish dialog close command sent')
     ff_control("stateCtrl_cmd", {"action": "setClearPlatform"})
 
     for _ in range(4):
@@ -585,7 +659,18 @@ def api_clear_job():
 def camera_thumb():
     """Current job thumbnail — plain GET on the printer, no auth body."""
     try:
-        r = requests.get(f"{BASE}/getThum", timeout=8)
+        if moonraker:
+            detail, error = fetch_detail()
+            if not detail:
+                raise RuntimeError(error)
+            try:
+                r = moonraker.thumbnail(detail.get('printFileName', ''))
+            except Exception:
+                if not (SERIAL and CHECK_CODE):
+                    raise
+                r = requests.get(f"{BASE}/getThum", timeout=8)
+        else:
+            r = requests.get(f"{BASE}/getThum", timeout=8)
         r.raise_for_status()
     except Exception as exc:
         return Response(f"no thumbnail: {exc}", status=502)
